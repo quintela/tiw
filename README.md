@@ -86,29 +86,52 @@ IGNORE_LOCK_FILES=true # Skip lock files in diffs (default: true)
 For development (directly with TypeScript):
 
 ```sh
-yarn dev [options]
+yarn dev [command] [options]
 ```
 
 Using the built version:
 
 ```sh
 yarn build
-yarn start [options]
+yarn start [command] [options]
 ```
 
 Or if installed globally:
 
 ```sh
-tiw [options]
+tiw [command] [options]
 ```
 
-### Local Mode (Default)
+### Available Commands
 
-Review changes between the current state and the previous commit:
+Tiw supports three main operating modes as subcommands:
 
 ```sh
-tiw
+# Local mode - review local git changes
+tiw local [options]
+
+# CI mode - review changes in CI environment
+tiw ci [options]
+
+# URL mode - review a specific merge/pull request by URL
+tiw url <url> [options]
 ```
+
+If no command is provided, help information will be displayed.
+
+### Local Mode
+
+Review changes in your local repository:
+
+```sh
+tiw local
+```
+
+This will:
+
+- Detect local changes (uncommitted or staged)
+- If no local changes, compare with remote branch
+- If on a new branch, find an appropriate base branch to compare against
 
 ### URL Mode
 
@@ -116,29 +139,13 @@ Review a merge/pull request by URL:
 
 ```sh
 # For GitLab MRs
-tiw --mode url --mr-url https://gitlab.com/group/project/-/merge_requests/123
+tiw url https://gitlab.com/group/project/-/merge_requests/123
 
 # For GitHub PRs
-tiw --mode url --mr-url https://github.com/owner/repo/pull/123
+tiw url https://github.com/owner/repo/pull/123
 ```
 
-The tool now automatically detects whether a URL is from GitHub or GitLab, so you don't need to specify the `--platform` flag when using URL mode - it will be determined from the URL.
-
-### Show Diff
-
-View the diff before sending it to the LLM:
-
-```sh
-tiw --show-diff
-```
-
-### Custom GitLab Instance
-
-Specify a custom GitLab instance URL:
-
-```sh
-tiw --gitlab-url https://git.yourcompany.com
-```
+The tool automatically detects whether a URL is from GitHub or GitLab, so you don't need to specify the `--platform` flag when using URL mode - it will be determined from the URL.
 
 ### CI Mode
 
@@ -157,7 +164,7 @@ mr-review:
   image: node:latest
   script:
     - npm install -g tiw
-    - tiw --mode ci
+    - tiw ci
   only:
     - merge_requests
   variables:
@@ -194,11 +201,54 @@ jobs:
           node-version: '18'
       - run: npm install -g tiw
       - name: Run Tiw
-        run: tiw --platform github --mode ci
+        run: tiw ci --platform github
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LLM_PROVIDER: anthropic
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+### Common Options
+
+The following options are available for all commands:
+
+```sh
+# Select LLM provider
+-p, --provider <provider>  LLM provider (anthropic, openai, deepseek, or copilot) (default: "anthropic")
+
+# Specify custom model
+-m, --model <model>        LLM model to use (default depends on provider)
+
+# Specify Git platform
+--platform <platform>      Git platform (gitlab or github), auto-detected if not specified
+
+# Set template directory
+--templates <directory>    Directory containing all templates and prompts
+
+# Set review storage directory
+--reviews-dir <path>       Directory to save review files
+
+# Logging options
+--verbose                  Enable verbose logging with diff preview
+--debug                    Enable debug mode with detailed logging
+
+# Help and version
+-h, --help                 Display help
+-V, --version              Display version
+```
+
+### Viewing Available Commands and Options
+
+```sh
+tiw --help
+```
+
+Or for help with a specific command:
+
+```sh
+tiw local --help
+tiw ci --help
+tiw url --help
 ```
 
 ### LLM Provider Configuration
@@ -207,64 +257,48 @@ jobs:
 
 ```sh
 # Use Anthropic Claude
-tiw --provider anthropic --model claude-3-7-sonnet-20250219
+tiw local --provider anthropic --model claude-3-7-sonnet-20250219
 # OR using environment variables
 export LLM_PROVIDER=anthropic
 export ANTHROPIC_API_KEY=your_api_key
 export ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
-tiw
+tiw local
 ```
 
 #### OpenAI
 
 ```sh
 # Use OpenAI
-tiw --provider openai --model gpt-4
+tiw local --provider openai --model gpt-4
 # OR using environment variables
 export LLM_PROVIDER=openai
 export OPENAI_API_KEY=your_api_key
 export OPENAI_MODEL=gpt-4
-tiw
+tiw local
 ```
 
 #### DeepSeek
 
 ```sh
 # Use DeepSeek
-tiw --provider deepseek --model deepseek-coder
+tiw local --provider deepseek --model deepseek-coder
 # OR using environment variables
 export LLM_PROVIDER=deepseek
 export DEEPSEEK_API_KEY=your_api_key
 export DEEPSEEK_MODEL=deepseek-coder
-tiw
+tiw local
 ```
 
 #### Copilot
 
 ```sh
 # Use GitHub Copilot
-tiw --provider copilot --model gpt-4
+tiw local --provider copilot --model gpt-4
 # OR using environment variables
 export LLM_PROVIDER=copilot
 export COPILOT_API_KEY=your_api_key
 export COPILOT_MODEL=gpt-4
-tiw
-```
-
-### Additional Options
-
-```sh
-# Use a custom prompt template
-tiw --prompt /path/to/your/template.ts
-
-# Change where reviews are saved
-tiw --reviews-dir /path/to/review/directory
-
-# View the diff before sending to LLM for review
-tiw --show-diff
-
-# Enable verbose logging
-tiw --verbose
+tiw local
 ```
 
 ## Review Storage
@@ -384,6 +418,7 @@ This project uses several tools to ensure code quality:
    - `analyzeCode`: Handle code review with your LLM
 4. Add the new provider to the factory in `src/adapters/llm/index.ts`
 5. Add relevant configuration options in `src/config/config.ts`
+6. Update the `VALID_PROVIDERS` array in `src/index.ts`
 
 ### Adding a New Git Platform
 
@@ -402,13 +437,7 @@ To modify the default prompts and output formatting:
 
 1. Create custom prompt files in `src/templates/prompts/`
 2. Create custom formatter templates in `src/templates/formatters/`
-3. Use the `--prompt` and `--formatter-template` options to use your custom templates
-
-## Help
-
-```sh
-tiw --help
-```
+3. Use the `--templates` option to specify your templates directory
 
 ## License
 

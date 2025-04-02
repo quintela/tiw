@@ -8,6 +8,21 @@ import type { AppConfig } from '../config/config';
 import { FileUtils } from '../utils/fileUtils';
 import { Logger } from '../utils/logging';
 import { ReviewFormatter } from './ReviewFormatter';
+import type { FileReview, Overview, ReviewFeedback } from './ReviewFormatter';
+
+interface ReviewMetadata {
+  timestamp: string;
+  llmProvider: string;
+  llmModel: string;
+  mrMode: string;
+  gitPlatform: string;
+  commandLine: string;
+  [key: string]: string;
+}
+
+interface ParsedFeedback extends ReviewFeedback {
+  [key: string]: any;
+}
 
 /**
  * Main class for performing MR/PR reviews
@@ -45,88 +60,319 @@ export class MRReviewer {
   }
 
   /**
+   * Execute the review workflow
+   * @returns Path to the saved review file
+   */
+  async review(): Promise<string | null> {
+    try {
+      // Get the diff
+      const diff = await this.getDiff();
+      if (this.config.verbose) {
+        this.logger.debug(`</diff start>${diff}</diff end>`);
+      }
+      this.logger.info(`Retrieved diff (${diff.length} characters)`);
+
+      if (diff.length === 0) {
+        this.logger.warn('No changes detected, skipping LLM analysis');
+        return null;
+      }
+
+      if (await this.shouldCancelReview(diff)) {
+        return null;
+      }
+
+      const feedback = await this.analyzeDiff(diff);
+      this.logger.info('LLM analysis completed');
+
+      const metadata = this.createReviewMetadata();
+
+      const reviewFilePath = this.fileUtils.saveReviewToFile(
+        this.config.reviewsDir,
+        feedback,
+        metadata
+      );
+
+      const parsedFeedback = this.parseFeedback(feedback);
+      const formattedComment = this.formatter.format({
+        metadata,
+        feedback: parsedFeedback,
+      });
+
+      await this.postComment(formattedComment);
+
+      this.logger.info('Review completed successfully');
+      return reviewFilePath;
+    } catch (error) {
+      this.logger.error('Review failed:', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create metadata for the review
+   *
+   * @returns Review metadata object
+   */
+  private createReviewMetadata(): ReviewMetadata {
+    return {
+      timestamp: new Date().toISOString(),
+      llmProvider: this.config.llmProvider,
+      llmModel: this.getLLMModelName(),
+      mrMode: this.config.mrMode,
+      gitPlatform: this.config.gitPlatform,
+      commandLine: process.argv.join(' '),
+    };
+  }
+
+  /**
+   * Check if the review should be canceled based on user input
+   *
+   * @param diff The diff content
+   * @returns True if the review should be canceled
+   */
+  private async shouldCancelReview(diff: string): Promise<boolean> {
+    if (!this.config.showDiff) {
+      return false;
+    }
+
+    this.displayDiff(diff);
+
+    // If we're not in interactive mode, continue with the review
+    if (!process.stdin.isTTY) {
+      return false;
+    }
+
+    const shouldCancel = await this.promptForCancellation();
+    if (shouldCancel) {
+      this.logger.info('LLM analysis cancelled by user');
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Display the diff to the user
+   *
+   * @param diff The diff content
+   */
+  private displayDiff(diff: string): void {
+    this.logger.user('\n===== DIFF START =====\n');
+    this.logger.user(diff);
+    this.logger.user('\n===== DIFF END =====\n');
+  }
+
+  /**
+   * Prompt the user for cancellation
+   *
+   * @returns True if the user wants to cancel
+   */
+  private async promptForCancellation(): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const answer = await new Promise<string>(resolve => {
+      rl.question('Continue with LLM analysis? (Y/n): ', resolve);
+    });
+
+    rl.close();
+    return answer.toLowerCase() === 'n';
+  }
+
+  /**
+   * Parse the feedback string into a structured object
+   *
+   * @param feedback The feedback string from the LLM
+   * @returns Parsed feedback object
+   */
+  private parseFeedback(feedback: string): ParsedFeedback {
+    try {
+      const parsedFeedback: any = typeof feedback === 'string' ? JSON.parse(feedback) : feedback;
+
+      // TODO(FIXME)
+      // Create a new object with default values and spread the parsed feedback
+      // This avoids the "specified more than once" TypeScript warning
+      const result: ParsedFeedback = {
+        // Default values
+        overview: parsedFeedback.overview || ({} as Overview),
+        fileReviews: parsedFeedback.fileReviews || ([] as FileReview[]),
+        testReview: parsedFeedback.testReview || '',
+        generalFeedback: parsedFeedback.generalFeedback || '',
+
+        // Copy any other properties
+        ...Object.fromEntries(
+          Object.entries(parsedFeedback).filter(
+            ([key]) => !['overview', 'fileReviews', 'testReview', 'generalFeedback'].includes(key)
+          )
+        ),
+      };
+
+      return result;
+    } catch (error) {
+      this.logger.error('Error parsing feedback for formatting:', error as Error);
+      throw new Error('Could not format review due to JSON parsing error');
+    }
+  }
+
+  /**
    * Get MR/PR diff based on the configured mode
    * @returns The diff content
    */
   async getDiff(): Promise<string> {
     try {
-      if (
-        this.config.mrMode === 'ci' &&
-        process.env['CI_PIPELINE_SOURCE'] === 'merge_request_event'
-      ) {
-        // Running in CI mode
-        this.logger.info('Running in CI mode, fetching diff from Git platform API');
-
-        if (this.config.gitPlatform === 'gitlab') {
-          return await this.gitAdapter.getRequestDiff({
-            projectId: this.config.projectId || '',
-            mergeRequestIid: this.config.mergeRequestIid || '',
-          });
-        }
-        if (this.config.gitPlatform === 'github') {
-          // Handle GitHub CI mode (needs additional environment variables)
-          // This would need to be expanded based on GitHub Actions environment
-          throw new Error('GitHub CI mode not fully implemented yet');
-        }
-      } else if (this.config.mrMode === 'url') {
-        // Running with a Git MR/PR URL
-        if (!this.config.gitMrUrl) {
-          throw new Error('Git MR/PR URL is required for URL mode');
-        }
-
-        // Determine correct platform from URL
-        const url = this.config.gitMrUrl.toLowerCase();
-        const actualPlatform = this.config.gitPlatform;
-
-        // Helper function to detect URL type
-        const isGitHubUrl = (u: string) => u.includes('github.com') || u.includes('/pull/');
-        const isGitLabUrl = (u: string) =>
-          u.includes('gitlab') || u.includes('-/merge_requests/') || u.includes('/merge_requests/');
-
-        // Auto-detect platform from URL if it doesn't match current platform
-        if (isGitHubUrl(url) && this.config.gitPlatform !== 'github') {
-          this.logger.info(
-            'URL appears to be GitHub, but platform is set to GitLab. Switching to GitHub adapter.'
-          );
-          // Create a GitHub adapter specifically for this request
-          const gitFactory = new GitAdapterFactory();
-          const tempConfig = { ...this.config, gitPlatform: 'github' as const };
-          const githubAdapter = gitFactory.create(tempConfig);
-
-          const parsedUrl = githubAdapter.parseRequestUrl(this.config.gitMrUrl);
-          return await githubAdapter.getRequestDiff(parsedUrl);
-        }
-        if (isGitLabUrl(url) && this.config.gitPlatform !== 'gitlab') {
-          this.logger.info(
-            'URL appears to be GitLab, but platform is set to GitHub. Switching to GitLab adapter.'
-          );
-          // Create a GitLab adapter specifically for this request
-          const gitFactory = new GitAdapterFactory();
-          const tempConfig = { ...this.config, gitPlatform: 'gitlab' as const };
-          const gitlabAdapter = gitFactory.create(tempConfig);
-
-          const parsedUrl = gitlabAdapter.parseRequestUrl(this.config.gitMrUrl);
-          return await gitlabAdapter.getRequestDiff(parsedUrl);
-        }
-
-        this.logger.info(`Running in URL mode, fetching diff from ${actualPlatform} API using URL`);
-
-        // Parse the URL to get appropriate identifiers
-        const parsedUrl = this.gitAdapter.parseRequestUrl(this.config.gitMrUrl);
-
-        return await this.gitAdapter.getRequestDiff(parsedUrl);
-      } else {
-        // Running locally for testing
-        this.logger.info('Running in local mode, fetching diff from local git');
-        return await this.gitAdapter.getLocalDiff();
+      if (this.isRunningInCI()) {
+        return await this.getCIDiff();
       }
 
-      // This should never be reached, but TypeScript needs a return value
-      throw new Error('Unsupported Git platform or MR mode');
+      if (this.config.mrMode === 'url') {
+        return await this.getURLDiff();
+      }
+
+      // Default to local mode
+      this.logger.info('Running in local mode, fetching diff from local git');
+      return await this.gitAdapter.getLocalDiff();
     } catch (error) {
       this.logger.error('Error getting MR/PR diff:', error as Error);
       throw error;
     }
+  }
+
+  /**
+   * Check if running in CI mode
+   *
+   * @returns True if running in CI mode
+   */
+  private isRunningInCI(): boolean {
+    return (
+      this.config.mrMode === 'ci' && process.env['CI_PIPELINE_SOURCE'] === 'merge_request_event'
+    );
+  }
+
+  /**
+   * Get diff for CI mode
+   *
+   * @returns The diff content
+   */
+  private async getCIDiff(): Promise<string> {
+    this.logger.info('Running in CI mode, fetching diff from Git platform API');
+
+    if (this.config.gitPlatform === 'gitlab') {
+      return await this.gitAdapter.getRequestDiff({
+        projectId: this.config.projectId || '',
+        mergeRequestIid: this.config.mergeRequestIid || '',
+      });
+    }
+
+    if (this.config.gitPlatform === 'github') {
+      throw new Error('GitHub CI mode not fully implemented yet');
+    }
+
+    throw new Error('Unsupported Git platform for CI mode');
+  }
+
+  /**
+   * Get diff for URL mode
+   *
+   * @returns The diff content
+   */
+  private async getURLDiff(): Promise<string> {
+    if (!this.config.gitMrUrl) {
+      throw new Error('Git MR/PR URL is required for URL mode');
+    }
+
+    const url = this.config.gitMrUrl.toLowerCase();
+    const actualPlatform = this.config.gitPlatform;
+
+    if (this.isGitHubUrl(url)) {
+      console.log('isGitHub OK');
+      process.exit(1);
+      return await this.getGitHubDiffWithTempAdapter();
+    }
+
+    if (this.isGitLabUrl(url)) {
+      console.log('isGitLabUrl OK');
+      return await this.getGitLabDiffWithTempAdapter();
+    }
+    console.log('how?');
+    process.exit(1);
+    this.logger.info(`Running in URL mode, fetching diff from ${actualPlatform} API using URL`);
+
+    // Use the default adapter
+    const parsedUrl = this.gitAdapter.parseRequestUrl(this.config.gitMrUrl ?? '');
+    return await this.gitAdapter.getRequestDiff(parsedUrl);
+  }
+
+  /**
+   * Get GitHub diff using a temporary adapter
+   *
+   * @returns The diff content
+   */
+  private async getGitHubDiffWithTempAdapter(): Promise<string> {
+    this.logger.info(
+      'URL appears to be GitHub, but platform is set to GitLab. Switching to GitHub adapter.'
+    );
+
+    if (!this.config.gitMrUrl) {
+      throw new Error('Git MR/PR URL is required for GitHub adapter');
+    }
+
+    const gitFactory = new GitAdapterFactory();
+    const tempConfig = { ...this.config, gitPlatform: 'github' as const };
+    const githubAdapter = gitFactory.create(tempConfig);
+
+    const parsedUrl = githubAdapter.parseRequestUrl(this.config.gitMrUrl);
+    return await githubAdapter.getRequestDiff(parsedUrl);
+  }
+
+  /**
+   * Get GitLab diff using a temporary adapter
+   *
+   * @returns The diff content
+   */
+  private async getGitLabDiffWithTempAdapter(): Promise<string> {
+    this.logger.info(
+      'URL appears to be GitLab, but platform is set to GitHub. Switching to GitLab adapter.'
+    );
+
+    if (!this.config.gitMrUrl) {
+      throw new Error('Git MR/PR URL is required for GitLab adapter');
+    }
+
+    const gitFactory = new GitAdapterFactory();
+    const tempConfig = { ...this.config, gitPlatform: 'gitlab' as const };
+    const gitlabAdapter = gitFactory.create(tempConfig);
+    const parsedUrl = gitlabAdapter.parseRequestUrl(this.config.gitMrUrl);
+    const diffResult = await gitlabAdapter.getRequestDiff(parsedUrl);
+    if (this.config.verbose) {
+      this.logger.debug(`</diff start>${diffResult}</diff end>`);
+    }
+    return diffResult;
+  }
+
+  /**
+   * Check if URL is a GitHub URL
+   *
+   * @param url URL to check
+   * @returns True if URL is a GitHub URL
+   */
+  private isGitHubUrl(url: string): boolean {
+    return url.includes('github.com') || url.includes('/pull/');
+  }
+
+  /**
+   * Check if URL is a GitLab URL
+   *
+   * @param url URL to check
+   * @returns True if URL is a GitLab URL
+   */
+  private isGitLabUrl(url: string): boolean {
+    return (
+      url.includes('gitlab') ||
+      url.includes('-/merge_requests/') ||
+      url.includes('/merge_requests/')
+    );
   }
 
   /**
@@ -158,73 +404,119 @@ export class MRReviewer {
   async postComment(feedback: string): Promise<void> {
     try {
       if (this.config.mrMode === 'url') {
-        // Post comment using the URL
-        if (!this.config.gitMrUrl) {
-          throw new Error('Git MR/PR URL is required for URL mode');
-        }
-
-        // Determine correct platform from URL for commenting
-        const url = this.config.gitMrUrl.toLowerCase();
-
-        // Helper function to detect URL type
-        const isGitHubUrl = (u: string) => u.includes('github.com') || u.includes('/pull/');
-        const isGitLabUrl = (u: string) =>
-          u.includes('gitlab') || u.includes('-/merge_requests/') || u.includes('/merge_requests/');
-
-        if (isGitHubUrl(url) && this.config.gitPlatform !== 'github') {
-          this.logger.info('URL appears to be GitHub, using GitHub adapter for commenting.');
-          // Create a GitHub adapter specifically for this request
-          const gitFactory = new GitAdapterFactory();
-          const tempConfig = { ...this.config, gitPlatform: 'github' as const };
-          const githubAdapter = gitFactory.create(tempConfig);
-
-          const parsedUrl = githubAdapter.parseRequestUrl(this.config.gitMrUrl);
-          await githubAdapter.commentOnRequest(parsedUrl, feedback);
-          return;
-        }
-        if (isGitLabUrl(url) && this.config.gitPlatform !== 'gitlab') {
-          this.logger.info('URL appears to be GitLab, using GitLab adapter for commenting.');
-          // Create a GitLab adapter specifically for this request
-          const gitFactory = new GitAdapterFactory();
-          const tempConfig = { ...this.config, gitPlatform: 'gitlab' as const };
-          const gitlabAdapter = gitFactory.create(tempConfig);
-
-          const parsedUrl = gitlabAdapter.parseRequestUrl(this.config.gitMrUrl);
-          await gitlabAdapter.commentOnRequest(parsedUrl, feedback);
-          return;
-        }
-
-        // Use the default adapter if no special case was detected
-        const parsedUrl = this.gitAdapter.parseRequestUrl(this.config.gitMrUrl);
-        await this.gitAdapter.commentOnRequest(parsedUrl, feedback);
-      } else if (
-        this.config.mrMode === 'ci' &&
-        process.env['CI_PIPELINE_SOURCE'] === 'merge_request_event'
-      ) {
-        // Post comment in CI mode
-        if (this.config.gitPlatform === 'gitlab') {
-          await this.gitAdapter.commentOnRequest(
-            {
-              projectId: this.config.projectId || '',
-              mergeRequestIid: this.config.mergeRequestIid || '',
-            },
-            feedback
-          );
-        } else if (this.config.gitPlatform === 'github') {
-          // Handle GitHub CI mode
-          throw new Error('GitHub CI mode not fully implemented yet');
-        }
-      } else {
-        // Local mode - just print the feedback
-        this.logger.info('Running in local mode, skipping comment creation');
-        this.logger.user('\n===== LLM REVIEW ======\n');
-        this.logger.user(feedback);
-        this.logger.user('\n=======================\n');
+        await this.postCommentForUrlMode(feedback);
+        return;
       }
+
+      if (this.isRunningInCI()) {
+        await this.postCommentForCIMode(feedback);
+        return;
+      }
+
+      // Default to local mode - just print the feedback
+      this.displayLocalModeComment(feedback);
     } catch (error) {
       this.logger.error('Error posting comment:', error as Error);
       throw error;
     }
+  }
+
+  /**
+   * Post comment for URL mode
+   *
+   * @param feedback The formatted feedback
+   */
+  private async postCommentForUrlMode(feedback: string): Promise<void> {
+    if (!this.config.gitMrUrl) {
+      throw new Error('Git MR/PR URL is required for URL mode');
+    }
+
+    const url = this.config.gitMrUrl.toLowerCase();
+
+    if (this.isGitHubUrl(url) && this.config.gitPlatform !== 'github') {
+      await this.postCommentWithGitHubAdapter(feedback);
+      return;
+    }
+
+    if (this.isGitLabUrl(url) && this.config.gitPlatform !== 'gitlab') {
+      await this.postCommentWithGitLabAdapter(feedback);
+      return;
+    }
+
+    // Use the default adapter
+    const parsedUrl = this.gitAdapter.parseRequestUrl(this.config.gitMrUrl);
+    await this.gitAdapter.commentOnRequest(parsedUrl, feedback);
+  }
+
+  /**
+   * Post comment using GitHub adapter
+   *
+   * @param feedback The formatted feedback
+   */
+  private async postCommentWithGitHubAdapter(feedback: string): Promise<void> {
+    this.logger.info('URL appears to be GitHub, using GitHub adapter for commenting.');
+
+    if (!this.config.gitMrUrl) {
+      throw new Error('Git MR/PR URL is required for GitHub comment');
+    }
+
+    const gitFactory = new GitAdapterFactory();
+    const tempConfig = { ...this.config, gitPlatform: 'github' as const };
+    const githubAdapter = gitFactory.create(tempConfig);
+
+    const parsedUrl = githubAdapter.parseRequestUrl(this.config.gitMrUrl);
+    await githubAdapter.commentOnRequest(parsedUrl, feedback);
+  }
+
+  /**
+   * Post comment using GitLab adapter
+   *
+   * @param feedback The formatted feedback
+   */
+  private async postCommentWithGitLabAdapter(feedback: string): Promise<void> {
+    this.logger.info('URL appears to be GitLab, using GitLab adapter for commenting.');
+
+    if (!this.config.gitMrUrl) {
+      throw new Error('Git MR/PR URL is required for GitLab comment');
+    }
+
+    const gitFactory = new GitAdapterFactory();
+    const tempConfig = { ...this.config, gitPlatform: 'gitlab' as const };
+    const gitlabAdapter = gitFactory.create(tempConfig);
+
+    const parsedUrl = gitlabAdapter.parseRequestUrl(this.config.gitMrUrl);
+    await gitlabAdapter.commentOnRequest(parsedUrl, feedback);
+  }
+
+  /**
+   * Post comment for CI mode
+   *
+   * @param feedback The formatted feedback
+   */
+  private async postCommentForCIMode(feedback: string): Promise<void> {
+    if (this.config.gitPlatform === 'gitlab') {
+      await this.gitAdapter.commentOnRequest(
+        {
+          projectId: this.config.projectId || '',
+          mergeRequestIid: this.config.mergeRequestIid || '',
+        },
+        feedback
+      );
+    } else if (this.config.gitPlatform === 'github') {
+      throw new Error('GitHub CI mode not fully implemented yet');
+    }
+  }
+
+  /**
+   * Display comment for local mode
+   *
+   * @param feedback The formatted feedback
+   */
+  private displayLocalModeComment(feedback: string): void {
+    this.logger.info('Running in local mode, skipping comment creation');
+    this.logger.user('\n===== LLM REVIEW ======\n');
+    this.logger.user(feedback);
+    this.logger.user('\n=======================\n');
   }
 
   /**
@@ -242,107 +534,6 @@ export class MRReviewer {
         return this.config.copilotModel;
       default:
         return 'unknown';
-    }
-  }
-
-  /**
-   * Execute the review workflow
-   * @returns Path to the saved review file
-   */
-  async review(): Promise<string | null> {
-    try {
-      // Get the diff
-      const diff = await this.getDiff();
-      this.logger.info(`Retrieved diff (${diff.length} characters)`);
-
-      if (diff.length === 0) {
-        this.logger.warn('No changes detected, skipping LLM analysis');
-        return null;
-      }
-
-      // If showDiff is enabled, display the diff
-      if (this.config.showDiff) {
-        this.logger.user('\n===== DIFF START =====\n');
-        this.logger.user(diff);
-        this.logger.user('\n===== DIFF END =====\n');
-
-        // If we're in interactive mode, ask for confirmation
-        if (process.stdin.isTTY) {
-          const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout,
-          });
-
-          const answer = await new Promise<string>(resolve => {
-            rl.question('Continue with LLM analysis? (Y/n): ', resolve);
-          });
-
-          rl.close();
-
-          if (answer.toLowerCase() === 'n') {
-            this.logger.info('LLM analysis cancelled by user');
-            return null;
-          }
-        }
-      }
-
-      // Analyze the diff with LLM
-      const feedback = await this.analyzeDiff(diff);
-      this.logger.info('LLM analysis completed');
-
-      // Save the review to a file with metadata
-      const metadata = {
-        timestamp: new Date().toISOString(),
-        llmProvider: this.config.llmProvider,
-        llmModel: this.getLLMModelName(),
-        mrMode: this.config.mrMode,
-        gitPlatform: this.config.gitPlatform,
-        commandLine: process.argv.join(' '),
-      };
-
-      const reviewFilePath = this.fileUtils.saveReviewToFile(
-        this.config.reviewsDir,
-        feedback,
-        metadata
-      );
-
-      // Parse the feedback to an object for formatting
-      let parsedFeedback: any;
-      try {
-        parsedFeedback = typeof feedback === 'string' ? JSON.parse(feedback) : feedback;
-
-        // Ensure we have the required properties for the feedback
-        if (!parsedFeedback.overview) {
-          parsedFeedback.overview = '';
-        }
-        if (!parsedFeedback.fileReviews) {
-          parsedFeedback.fileReviews = [];
-        }
-        if (!parsedFeedback.testReview) {
-          parsedFeedback.testReview = '';
-        }
-        if (!parsedFeedback.generalFeedback) {
-          parsedFeedback.generalFeedback = '';
-        }
-      } catch (error) {
-        this.logger.error('Error parsing feedback for formatting:', error as Error);
-        throw new Error('Could not format review due to JSON parsing error');
-      }
-
-      // Format the feedback using the template
-      const formattedComment = this.formatter.format({
-        metadata,
-        feedback: parsedFeedback,
-      });
-
-      // Post the comment
-      await this.postComment(formattedComment);
-
-      this.logger.info('Review completed successfully');
-      return reviewFilePath;
-    } catch (error) {
-      this.logger.error('Review failed:', error as Error);
-      throw error;
     }
   }
 }
