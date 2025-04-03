@@ -13,10 +13,82 @@ export interface ReviewMetadata {
   [key: string]: unknown;
 }
 
+interface ReviewData {
+  metadata: ReviewMetadata;
+  feedback: object;
+}
+
 /**
  * File utility class for file operations
  */
 export class FileUtils {
+  /**
+   * Ensures a directory exists
+   * @param dirPath - Directory path to ensure
+   * @returns True if directory was created, false if it already existed
+   * @throws If the directory cannot be created
+   */
+  private ensureDirectoryExists(dirPath: string): boolean {
+    if (fs.existsSync(dirPath)) {
+      return false;
+    }
+
+    fs.mkdirSync(dirPath, { recursive: true });
+    return true;
+  }
+
+  /**
+   * Generate a timestamped filename for a review
+   * @param reviewsDir - Base directory for reviews
+   * @returns Full path with timestamped filename
+   */
+  private generateReviewFilename(reviewsDir: string): string {
+    const timestamp = new Date().toISOString().replace(/:/g, '-');
+    return path.join(reviewsDir, `review-${timestamp}.json`);
+  }
+
+  /**
+   * Parse feedback string to object if needed
+   * @param feedback - Feedback as string or object
+   * @returns Parsed feedback as object
+   * @throws If feedback string cannot be parsed as JSON
+   */
+  private parseFeedback(feedback: string | object): object {
+    if (typeof feedback !== 'string') {
+      return feedback;
+    }
+
+    try {
+      return JSON.parse(feedback);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Could not parse feedback as JSON: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Create review data object from metadata and feedback
+   * @param metadata - Review metadata
+   * @param parsedFeedback - Parsed feedback object
+   * @returns Combined review data object
+   */
+  private createReviewData(metadata: ReviewMetadata, parsedFeedback: object): ReviewData {
+    return {
+      metadata,
+      feedback: parsedFeedback,
+    };
+  }
+
+  /**
+   * Write review data to file
+   * @param filePath - Path to write the file
+   * @param reviewData - Review data to write
+   * @throws If the file cannot be written
+   */
+  private writeReviewFile(filePath: string, reviewData: ReviewData): void {
+    fs.writeFileSync(filePath, JSON.stringify(reviewData, null, 2));
+  }
+
   /**
    * Save review data to a JSON file
    * @param reviewsDir - Directory to save reviews
@@ -31,38 +103,72 @@ export class FileUtils {
     metadata: ReviewMetadata
   ): string {
     try {
-      // Create reviews directory if it doesn't exist
-      if (!fs.existsSync(reviewsDir)) {
-        fs.mkdirSync(reviewsDir, { recursive: true });
-      }
+      this.ensureDirectoryExists(reviewsDir);
 
-      // Create a filename with timestamp
-      const timestamp = new Date().toISOString().replace(/:/g, '-');
-      const filename = path.join(reviewsDir, `review-${timestamp}.json`);
+      const filePath = this.generateReviewFilename(reviewsDir);
+      const parsedFeedback = this.parseFeedback(feedback);
+      const reviewData = this.createReviewData(metadata, parsedFeedback);
 
-      // Combine metadata and feedback
-      let parsedFeedback: object;
-      try {
-        // If the feedback is a string, parse it to an object
-        parsedFeedback = typeof feedback === 'string' ? JSON.parse(feedback) : feedback;
-      } catch (error) {
-        console.error('Error parsing feedback JSON:', (error as Error).message);
-        throw new Error('Could not parse feedback as JSON.');
-      }
+      this.writeReviewFile(filePath, reviewData);
 
-      const reviewData = {
-        metadata,
-        feedback: parsedFeedback,
-      };
-
-      // Write to file
-      fs.writeFileSync(filename, JSON.stringify(reviewData, null, 2));
-      console.log(`Review saved to ${filename}`);
-
-      return filename;
+      console.log(`Review saved to ${filePath}`);
+      return filePath;
     } catch (error) {
-      console.error('Error saving review to file:', (error as Error).message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error saving review to file:', errorMessage);
       throw error;
+    }
+  }
+
+  /**
+   * Get all markdown files from a directory
+   * @param promptDir - Directory to search for markdown files
+   * @returns Sorted array of markdown filenames
+   * @throws If the directory cannot be read
+   */
+  private getMarkdownFiles(promptDir: string): string[] {
+    return fs
+      .readdirSync(promptDir)
+      .filter(file => file.endsWith('.md'))
+      .sort(); // Sort to ensure consistent order
+  }
+
+  /**
+   * Read file content and return as string
+   * @param filePath - Path to file
+   * @returns File content as string
+   * @throws If file cannot be read
+   */
+  private readFileContent(filePath: string): string {
+    return fs.readFileSync(filePath, 'utf8');
+  }
+
+  /**
+   * Combine multiple file contents into a single string
+   * @param promptDir - Directory containing files
+   * @param files - Array of filenames to combine
+   * @returns Combined content
+   */
+  private combineFileContents(promptDir: string, files: string[]): string {
+    let fullPrompt = '';
+
+    for (const file of files) {
+      const filePath = path.join(promptDir, file);
+      const content = this.readFileContent(filePath);
+      fullPrompt += `${content}\n\n`;
+    }
+
+    return fullPrompt.trim();
+  }
+
+  /**
+   * Validate prompt directory exists
+   * @param promptDir - Directory path to validate
+   * @throws If directory doesn't exist
+   */
+  private validatePromptDirectory(promptDir: string): void {
+    if (!fs.existsSync(promptDir)) {
+      throw new Error(`Prompt directory not found: ${promptDir}`);
     }
   }
 
@@ -73,37 +179,40 @@ export class FileUtils {
    */
   loadPromptFromDirectory(promptDir: string): string {
     try {
-      if (!fs.existsSync(promptDir)) {
-        throw new Error(`Prompt directory not found: ${promptDir}`);
-      }
+      this.validatePromptDirectory(promptDir);
 
-      // Read all markdown files from the directory
-      const files = fs
-        .readdirSync(promptDir)
-        .filter(file => file.endsWith('.md'))
-        .sort(); // Sort to ensure consistent order
+      const files = this.getMarkdownFiles(promptDir);
 
       if (files.length === 0) {
-        // Fallback to best practices if no files present
         return this.getBestPracticesPrompt();
       }
 
-      // Combine all files into a single prompt template
-      let fullPrompt = '';
-      for (const file of files) {
-        const filePath = path.join(promptDir, file);
-        const content = fs.readFileSync(filePath, 'utf8');
-        fullPrompt += `${content}\n\n`;
-      }
-
-      return fullPrompt.trim();
+      return this.combineFileContents(promptDir, files);
     } catch (error) {
-      console.error(
-        `Error loading prompt template from directory ${promptDir}:`,
-        (error as Error).message
-      );
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Error loading prompt template from directory ${promptDir}:`, errorMessage);
       throw error;
     }
+  }
+
+  /**
+   * Validate formatter template file exists
+   * @param templatePath - Path to validate
+   * @throws If file doesn't exist
+   */
+  private validateTemplateExists(templatePath: string): void {
+    if (!fs.existsSync(templatePath)) {
+      throw new Error(`Formatter template not found: ${templatePath}`);
+    }
+  }
+
+  /**
+   * Compile Handlebars template from content
+   * @param content - Template content
+   * @returns Compiled Handlebars template
+   */
+  private compileTemplate(content: string): Handlebars.TemplateDelegate {
+    return Handlebars.compile(content);
   }
 
   /**
@@ -113,17 +222,13 @@ export class FileUtils {
    */
   loadFormatterTemplate(templatePath: string): Handlebars.TemplateDelegate {
     try {
-      if (!fs.existsSync(templatePath)) {
-        throw new Error(`Formatter template not found: ${templatePath}`);
-      }
+      this.validateTemplateExists(templatePath);
 
-      const content = fs.readFileSync(templatePath, 'utf8');
-      return Handlebars.compile(content);
+      const content = this.readFileContent(templatePath);
+      return this.compileTemplate(content);
     } catch (error) {
-      console.error(
-        `Error loading formatter template from ${templatePath}:`,
-        (error as Error).message
-      );
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Error loading formatter template from ${templatePath}:`, errorMessage);
       throw error;
     }
   }
