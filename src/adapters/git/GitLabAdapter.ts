@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { decode } from 'html-entities';
 
 import { GitAdapter } from './GitAdapter';
 
@@ -257,7 +258,7 @@ export class GitLabAdapter extends GitAdapter {
   async commentOnRequest(params: Record<string, string>, comment: string): Promise<void> {
     const glParams = params as unknown as GitLabMRParams;
     try {
-      await this.postMergeRequestComment(glParams, comment);
+      await this.postMergeRequestComment(glParams, decode(comment));
     } catch (error) {
       this.handleCommentError(error);
     }
