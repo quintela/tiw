@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tiw"
+version = "0.1.0"
+description = "A CLI tool that uses LLMs to review code changes in merge/pull requests"
+readme = "README.md"
+authors = [
+    {name = "Tiago", email = "913367+quintela@users.noreply.github.com"}
+]
+license = {text = "Apache-2.0"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "anthropic>=0.18.0",
+    "openai>=1.12.0",
+    "python-dotenv>=1.0.0",
+    "click>=8.1.7",
+    "python-gitlab>=4.3.0",
+    "pygithub>=2.1.1",
+    "loguru>=0.7.2",
+]
+
+[project.scripts]
+tiw = "tiw.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/quintela/tiw"
+Issues = "https://github.com/quintela/tiw/issues"
+
+[tool.pytest]
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.flake8]
+max-line-length = 100
+exclude = [".git", "__pycache__", "build", "dist"]
