@@ -45,7 +45,46 @@ yarn install
 
 ## Configuration
 
-Set the following environment variables or create a `.env` file:
+Tiw supports multiple ways to configure environment variables with the following priority order (highest to lowest):
+
+1. **Current working directory**: `.env` file in your current directory
+2. **User home directory**: `~/.tiw.env` file
+3. **Global config directory**: `~/.config/tiw/.env` file (recommended for global setup)
+4. **System environment variables**: Standard environment variables
+
+### Global Configuration (Recommended)
+
+For system-wide configuration that works from any directory, create a global config file:
+
+```sh
+# Create the config directory
+mkdir -p ~/.config/tiw
+
+# Create the global configuration file
+cat > ~/.config/tiw/.env << 'EOF'
+# LLM Configuration
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=your_anthropic_api_key
+ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
+
+# Git Platform Configuration
+GITLAB_URL=https://gitlab.com
+GITLAB_TOKEN=your_gitlab_token
+GITHUB_TOKEN=your_github_token
+
+# Other Options
+VERBOSE=true
+IGNORE_LOCK_FILES=true
+MAX_PROMPT_TOKENS=150000
+REVIEWS_DIR=./reviews
+EOF
+```
+
+With global configuration, you can run `tiw` from any directory without needing local `.env` files.
+
+### Local/Project Configuration
+
+You can also create project-specific `.env` files that override global settings:
 
 ```sh
 # LLM Configuration
@@ -78,6 +117,13 @@ GITHUB_TOKEN=your_github_token
 VERBOSE=true # Enable verbose logging
 IGNORE_LOCK_FILES=true # Skip lock files in diffs (default: true)
 ```
+
+### Configuration Files Priority
+
+- **Local `.env`**: Highest priority, overrides all other settings
+- **Home `~/.tiw.env`**: Medium priority, useful for user-specific settings
+- **Global `~/.config/tiw/.env`**: Lower priority, system-wide defaults
+- **Environment variables**: Lowest priority, can be set in shell or CI
 
 ## Usage
 

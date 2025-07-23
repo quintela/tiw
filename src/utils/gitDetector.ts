@@ -339,6 +339,29 @@ export class GitDetector {
   }
 
   /**
+   * Detect Git platform directly from URL (static method for URL mode)
+   * @param url - The MR/PR URL to analyze
+   * @returns Detected platform or null if not recognized
+   */
+  static detectPlatform(url: string): GitPlatform | null {
+    if (!url) {
+      return null;
+    }
+
+    // Check for GitLab URLs
+    if (url.includes('gitlab.com') || url.includes('gitlab') || url.includes('/-/merge_requests/')) {
+      return 'gitlab';
+    }
+
+    // Check for GitHub URLs
+    if (url.includes('github.com') && url.includes('/pull/')) {
+      return 'github';
+    }
+
+    return null;
+  }
+
+  /**
    * Log error with consistent formatting
    * @param message - Error message
    * @param error - Error object
