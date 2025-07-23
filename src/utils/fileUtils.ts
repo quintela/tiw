@@ -62,7 +62,35 @@ export class FileUtils {
       return JSON.parse(feedback);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Could not parse feedback as JSON: ${errorMessage}`);
+      
+      // Create a fallback structured response when JSON parsing fails
+      const fallbackResponse = {
+        overview: {
+          summary: "Code review completed but response was not in expected JSON format",
+          riskLevel: "medium",
+          recommendedAction: "comment"
+        },
+        fileReviews: [],
+        testReview: {
+          compliance: "unknown",
+          missingTests: ["Unable to parse test analysis from response"],
+          testQualityIssues: []
+        },
+        generalFeedback: {
+          strengths: [],
+          concerns: ["LLM response was not in valid JSON format"],
+          suggestions: [
+            "Review the raw response manually",
+            "Consider adjusting the prompt to enforce JSON output"
+          ]
+        },
+        rawResponse: feedback.substring(0, 1000) // Include first 1000 chars of raw response
+      };
+      
+      console.warn(`Warning: Could not parse LLM response as JSON: ${errorMessage}`);
+      console.warn(`Raw response (first 200 chars): ${feedback.substring(0, 200)}...`);
+      
+      return fallbackResponse;
     }
   }
 

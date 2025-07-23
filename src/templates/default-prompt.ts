@@ -36,7 +36,9 @@ Please evaluate according to these specific criteria:
    - Check for missing test cases
    - Assess test maintainability
 
-Structure your response in JSON format for easier parsing, following this structure:
+IMPORTANT: You MUST respond with ONLY valid JSON. Do not include any markdown formatting, explanations, or text outside the JSON structure. Your entire response must be valid JSON that can be parsed directly.
+
+Use this exact JSON structure:
 {
   "overview": {
     "summary": "Brief summary of the PR",
@@ -84,6 +86,8 @@ Prioritize feedback on:
 5. Test quality and coverage
 
 Provide specific feedback with line numbers when possible. If no issues are found in a particular category, explicitly state that.
+
+Remember: Return ONLY the JSON response. No markdown headers, no explanations, no additional text - just the raw JSON object.
 <!-- CONTINUATION -->
 
 CODE DIFF:

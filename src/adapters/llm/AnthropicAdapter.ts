@@ -40,6 +40,7 @@ export class AnthropicAdapter extends LLMAdapter {
       const message = await client.messages.create({
         model: this.config.anthropicModel,
         max_tokens: 4000,
+        system: "You are a code review assistant. You MUST respond with only valid JSON format. Never include markdown, explanations, or any text outside the JSON structure. Your entire response must be parseable JSON.",
         messages: [{ role: 'user', content: prompt }],
       });
 
