@@ -34,3 +34,6 @@ Thumbs.db
 # Reviews output
 mr-reviews/
 reviews/
+.cursor
+.prj
+CLAUDE.md

@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import dotenv from 'dotenv';
@@ -6,8 +8,8 @@ import _ from 'lodash';
 import { GitDetector } from '../utils/gitDetector';
 import { Logger } from '../utils/logging';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables from multiple locations
+loadEnvironmentVariables();
 
 export type LLMProvider = 'anthropic' | 'openai' | 'deepseek' | 'copilot';
 export type GitPlatform = 'gitlab' | 'github';
@@ -331,7 +333,13 @@ export class Config {
   async load(): Promise<AppConfig> {
     // Auto-detect git platform if not specified in options or env
     if (!this.options.gitPlatform && !this.getEnvVar('GIT_PLATFORM')) {
-      await this.autoDetectGitPlatform();
+      // If we have a URL (URL mode), detect platform from the URL
+      if (this.options.gitMrUrl) {
+        this.detectPlatformFromUrl();
+      } else {
+        // Otherwise, detect from local git repository
+        await this.autoDetectGitPlatform();
+      }
     }
 
     // Merge defaults with options and environment variables
@@ -481,6 +489,27 @@ export class Config {
   }
 
   /**
+   * Detect Git platform from the provided URL (for URL mode)
+   */
+  private detectPlatformFromUrl(): void {
+    if (!this.options.gitMrUrl) {
+      return;
+    }
+
+    const detectedPlatform = GitDetector.detectPlatform(this.options.gitMrUrl);
+    
+    if (!detectedPlatform) {
+      this.logger.warn(`Could not detect Git platform from URL: ${this.options.gitMrUrl}`);
+      return;
+    }
+
+    this.logger.info(`Auto-detected Git platform: ${detectedPlatform}`);
+
+    // Update the options to use detected platform
+    this.options.gitPlatform = detectedPlatform;
+  }
+
+  /**
    * Update Git platform defaults based on detected information
    *
    * @param platformInfo Detected platform information
@@ -502,5 +531,35 @@ export class Config {
         this.logger.debug(`GitLab project path: ${platformInfo.projectPath}`);
       }
     }
+  }
+}
+
+/**
+ * Load environment variables from multiple locations with priority order:
+ * 1. Current working directory (.env)
+ * 2. User's home directory (~/.tiw.env)
+ * 3. User's config directory (~/.config/tiw/.env)
+ * 4. System environment variables (always loaded)
+ */
+function loadEnvironmentVariables(): void {
+  // Always load system environment variables first (lowest priority)
+  
+  // Load from user config directory (~/.config/tiw/.env)
+  const configDir = path.join(os.homedir(), '.config', 'tiw');
+  const configEnvPath = path.join(configDir, '.env');
+  if (fs.existsSync(configEnvPath)) {
+    dotenv.config({ path: configEnvPath });
+  }
+
+  // Load from user home directory (~/.tiw.env)
+  const homeEnvPath = path.join(os.homedir(), '.tiw.env');
+  if (fs.existsSync(homeEnvPath)) {
+    dotenv.config({ path: homeEnvPath });
+  }
+
+  // Load from current working directory (.env) - highest priority
+  const cwdEnvPath = path.join(process.cwd(), '.env');
+  if (fs.existsSync(cwdEnvPath)) {
+    dotenv.config({ path: cwdEnvPath });
   }
 }
