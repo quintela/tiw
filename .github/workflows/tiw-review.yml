@@ -47,7 +47,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           LLM_PROVIDER: anthropic
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ANTHROPIC_MODEL: claude-3-7-sonnet-20250219
+          ANTHROPIC_MODEL: claude-sonnet-4-20250514
           VERBOSE: 'true'
           IGNORE_LOCK_FILES: 'true'
           MAX_PROMPT_TOKENS: 150000
