@@ -1,0 +1,53 @@
+name: Tiw Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build Tiw
+        run: yarn build
+
+      - name: Debug API Key
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "❌ ANTHROPIC_API_KEY is not set or empty"
+            exit 1
+          else
+            echo "✅ ANTHROPIC_API_KEY is set (length: ${#ANTHROPIC_API_KEY})"
+            echo "✅ First 20 chars: ${ANTHROPIC_API_KEY:0:20}..."
+          fi
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Run Tiw Review
+        run: yarn start ci --platform github --verbose
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          LLM_PROVIDER: anthropic
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: claude-3-7-sonnet-20250219
+          VERBOSE: 'true'
+          IGNORE_LOCK_FILES: 'true'
+          MAX_PROMPT_TOKENS: 150000

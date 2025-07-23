@@ -245,9 +245,21 @@ export class MRReviewer {
    * @returns True if running in CI mode
    */
   private isRunningInCI(): boolean {
-    return (
-      this.config.mrMode === 'ci' && process.env['CI_PIPELINE_SOURCE'] === 'merge_request_event'
-    );
+    if (this.config.mrMode !== 'ci') {
+      return false;
+    }
+    
+    // Check for GitLab CI
+    if (process.env['CI_PIPELINE_SOURCE'] === 'merge_request_event') {
+      return true;
+    }
+    
+    // Check for GitHub Actions
+    if (process.env['GITHUB_ACTIONS'] === 'true' && process.env['GITHUB_EVENT_NAME'] === 'pull_request') {
+      return true;
+    }
+    
+    return false;
   }
 
   /**
@@ -266,7 +278,8 @@ export class MRReviewer {
     }
 
     if (this.config.gitPlatform === 'github') {
-      throw new Error('GitHub CI mode not fully implemented yet');
+      // GitHub adapter handles CI mode through getLocalDiff() which detects GitHub Actions
+      return await this.gitAdapter.getLocalDiff();
     }
 
     throw new Error('Unsupported Git platform for CI mode');
@@ -503,7 +516,32 @@ export class MRReviewer {
         feedback
       );
     } else if (this.config.gitPlatform === 'github') {
-      throw new Error('GitHub CI mode not fully implemented yet');
+      // Extract PR parameters from GitHub Actions environment
+      const repository = process.env['GITHUB_REPOSITORY']; // e.g., "owner/repo"
+      const ref = process.env['GITHUB_REF']; // e.g., "refs/pull/123/merge"
+      
+      if (!repository || !ref) {
+        throw new Error('GitHub Actions environment variables not found');
+      }
+      
+      const repositoryParts = repository.split('/');
+      const prMatch = ref.match(/refs\/pull\/(\d+)\/merge/);
+      
+      if (repositoryParts.length !== 2 || !prMatch || !prMatch[1]) {
+        throw new Error('Could not parse GitHub Actions environment variables');
+      }
+      
+      const [owner, repo] = repositoryParts;
+      const pullNumber = prMatch[1];
+      
+      if (!owner || !repo) {
+        throw new Error('Invalid repository format from GitHub Actions');
+      }
+      
+      await this.gitAdapter.commentOnRequest(
+        { owner, repo, pullNumber },
+        feedback
+      );
     }
   }
 

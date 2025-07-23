@@ -13,6 +13,64 @@ export interface GitHubPRParams {
  */
 export class GitHubAdapter extends GitAdapter {
   /**
+   * Override getLocalDiff to handle CI mode properly for GitHub Actions
+   * @param targetBranch - The branch to compare against (ignored in CI mode)
+   * @returns The diff content
+   */
+  override async getLocalDiff(targetBranch?: string): Promise<string> {
+    // In CI mode, use GitHub API to fetch PR diff
+    if (this.config.mrMode === 'ci') {
+      return this.getCIModeFromGitHubActions();
+    }
+    
+    // For non-CI mode, use parent implementation
+    return super.getLocalDiff(targetBranch);
+  }
+  
+  /**
+   * Get PR diff from GitHub Actions environment
+   * @returns The diff content from GitHub API
+   */
+  private async getCIModeFromGitHubActions(): Promise<string> {
+    // GitHub Actions provides these environment variables
+    const repository = process.env['GITHUB_REPOSITORY']; // e.g., "owner/repo"
+    const eventName = process.env['GITHUB_EVENT_NAME'];
+    const ref = process.env['GITHUB_REF']; // e.g., "refs/pull/123/merge"
+    
+    if (eventName !== 'pull_request') {
+      throw new Error(`CI mode is only supported for pull_request events, got: ${eventName}`);
+    }
+    
+    if (!repository) {
+      throw new Error('GITHUB_REPOSITORY environment variable not found');
+    }
+    
+    if (!ref || !ref.startsWith('refs/pull/')) {
+      throw new Error(`Invalid GITHUB_REF for pull request: ${ref}`);
+    }
+    
+    // Extract PR number from ref: refs/pull/123/merge -> 123
+    const prMatch = ref.match(/refs\/pull\/(\d+)\/merge/);
+    if (!prMatch) {
+      throw new Error(`Could not extract PR number from GITHUB_REF: ${ref}`);
+    }
+    
+    const repositoryParts = repository.split('/');
+    if (repositoryParts.length !== 2) {
+      throw new Error(`Invalid GITHUB_REPOSITORY format: ${repository}`);
+    }
+    
+    const [owner, repo] = repositoryParts;
+    const pullNumber = prMatch[1];
+    
+    if (!owner || !repo || !pullNumber) {
+      throw new Error(`Failed to parse GitHub repository information: owner=${owner}, repo=${repo}, pullNumber=${pullNumber}`);
+    }
+    
+    // Use existing getRequestDiff method
+    return this.getRequestDiff({ owner, repo, pullNumber });
+  }
+  /**
    * Parse a GitHub PR URL to extract owner, repo, and PR number
    * @param url - The URL to parse
    * @returns Object containing owner, repo, and pullNumber

@@ -157,16 +157,36 @@ export class Config {
       // Path to reviews output directory
       reviewsDir: path.join(process.cwd(), 'reviews'),
 
-      // Default templates
-      promptDir: path.join(__dirname, '..', 'templates', 'prompts'),
+      // Default templates - use src/templates which is tracked in git
+      promptDir: path.join(this.findProjectRoot(), 'src', 'templates', 'prompts'),
       formatterTemplate: path.join(
-        __dirname,
-        '..',
+        this.findProjectRoot(),
+        'src',
         'templates',
         'formatters',
         'markdown_format.md'
       ),
     };
+  }
+
+  /**
+   * Find the project root directory by looking for package.json
+   * @returns Path to project root directory
+   */
+  private findProjectRoot(): string {
+    let currentDir = __dirname;
+    
+    // Keep going up directories until we find package.json or reach root
+    while (currentDir !== path.dirname(currentDir)) {
+      const packageJsonPath = path.join(currentDir, 'package.json');
+      if (fs.existsSync(packageJsonPath)) {
+        return currentDir;
+      }
+      currentDir = path.dirname(currentDir);
+    }
+    
+    // Fallback to __dirname if package.json not found
+    return __dirname;
   }
 
   /**
