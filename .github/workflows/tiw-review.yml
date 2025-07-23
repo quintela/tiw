@@ -29,6 +29,18 @@ jobs:
       - name: Build Tiw
         run: yarn build
 
+      - name: Debug API Key
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "❌ ANTHROPIC_API_KEY is not set or empty"
+            exit 1
+          else
+            echo "✅ ANTHROPIC_API_KEY is set (length: ${#ANTHROPIC_API_KEY})"
+            echo "✅ First 20 chars: ${ANTHROPIC_API_KEY:0:20}..."
+          fi
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
       - name: Run Tiw Review
         run: yarn start ci --platform github --verbose
         env:
