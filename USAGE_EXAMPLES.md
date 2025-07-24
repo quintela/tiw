@@ -72,7 +72,7 @@ tiw local
 # Production environment  
 export LLM_PROVIDER=anthropic
 export ANTHROPIC_API_KEY=your-prod-key
-export ANTHROPIC_MODEL=claude-3-7-sonnet-20250219  # Best quality
+export ANTHROPIC_MODEL=claude-sonnet-4-20250514  # Best quality
 export MAX_PROMPT_TOKENS=150000
 tiw local
 ```
@@ -104,7 +104,7 @@ tiw url https://github.com/owner/repo/pull/123
 # GitHub PR with custom configuration
 tiw url https://github.com/company/project/pull/456 \
   --provider anthropic \
-  --model claude-3-7-sonnet-20250219 \
+  --model claude-sonnet-4-20250514 \
   --debug
 
 # Private GitHub repository
@@ -185,7 +185,7 @@ mr-review-anthropic:
     - tiw ci --provider anthropic --verbose
   variables:
     LLM_PROVIDER: anthropic
-    ANTHROPIC_MODEL: claude-3-7-sonnet-20250219
+    ANTHROPIC_MODEL: claude-sonnet-4-20250514
     MAX_PROMPT_TOKENS: 150000
   only:
     - merge_requests
@@ -283,7 +283,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LLM_PROVIDER: anthropic
-          ANTHROPIC_MODEL: claude-3-7-sonnet-20250219
+          ANTHROPIC_MODEL: claude-sonnet-4-20250514
           MAX_PROMPT_TOKENS: 150000
           IGNORE_LOCK_FILES: 'true'
 ```
@@ -445,7 +445,7 @@ REVIEWS_DIR=./dev-reviews
 # .env.production
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-api03-your-prod-key
-ANTHROPIC_MODEL=claude-3-7-sonnet-20250219  # Best quality
+ANTHROPIC_MODEL=claude-sonnet-4-20250514  # Best quality
 
 GIT_PLATFORM=gitlab
 GITLAB_URL=https://gitlab.company.com
@@ -469,7 +469,7 @@ DEEPSEEK_API_KEY=your-deepseek-key
 COPILOT_API_KEY=your-copilot-key
 
 # Provider-specific models
-ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
 OPENAI_MODEL=gpt-4
 DEEPSEEK_MODEL=deepseek-coder
 COPILOT_MODEL=gpt-4

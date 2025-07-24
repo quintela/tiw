@@ -65,7 +65,7 @@ cat > ~/.config/tiw/.env << 'EOF'
 # LLM Configuration
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=your_anthropic_api_key
-ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
 
 # Git Platform Configuration
 GITLAB_URL=https://gitlab.com
@@ -95,7 +95,7 @@ DEEPSEEK_API_KEY=your_deepseek_api_key
 COPILOT_API_KEY=your_copilot_api_key
 
 # LLM Model Selection
-ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
 OPENAI_MODEL=gpt-4
 DEEPSEEK_MODEL=deepseek-coder
 COPILOT_MODEL=gpt-4
@@ -207,7 +207,7 @@ stages:
 
 variables:
   LLM_PROVIDER: anthropic
-  ANTHROPIC_MODEL: claude-3-7-sonnet-20250219
+  ANTHROPIC_MODEL: claude-sonnet-4-20250514
   VERBOSE: 'true'
   IGNORE_LOCK_FILES: 'true'
   MAX_PROMPT_TOKENS: 150000
@@ -215,27 +215,27 @@ variables:
 tiw-code-review:
   stage: review
   image: node:20-alpine
-  
+
   # Only run on merge request events
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  
+
   # Cache node_modules for faster builds
   cache:
-    key: 
+    key:
       files:
         - yarn.lock
     paths:
       - node_modules/
-  
+
   before_script:
     - apk add --no-cache git
     - yarn install --frozen-lockfile
     - yarn build
-  
+
   script:
     - yarn start ci --platform gitlab --verbose
-  
+
   # Allow failure to prevent blocking MRs
   allow_failure: true
 ```
@@ -287,7 +287,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           LLM_PROVIDER: anthropic
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ANTHROPIC_MODEL: claude-3-7-sonnet-20250219
+          ANTHROPIC_MODEL: claude-sonnet-4-20250514
           VERBOSE: 'true'
           IGNORE_LOCK_FILES: 'true'
           MAX_PROMPT_TOKENS: 150000
@@ -347,11 +347,11 @@ tiw url --help
 
 ```sh
 # Use Anthropic Claude
-tiw local --provider anthropic --model claude-3-7-sonnet-20250219
+tiw local --provider anthropic --model claude-sonnet-4-20250514
 # OR using environment variables
 export LLM_PROVIDER=anthropic
 export ANTHROPIC_API_KEY=your_api_key
-export ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
+export ANTHROPIC_MODEL=claude-sonnet-4-20250514
 tiw local
 ```
 

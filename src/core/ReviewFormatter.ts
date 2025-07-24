@@ -7,7 +7,7 @@ import { FileUtils } from '../utils/fileUtils';
 export interface ReviewComment {
   line: number;
   type: string;
-  severity: string;
+  priority: string;
   comment: string;
   suggestion?: string;
 }

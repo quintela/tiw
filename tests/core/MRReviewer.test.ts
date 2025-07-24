@@ -113,7 +113,7 @@ describe('MRReviewer', () => {
     // Setup mock config
     mockConfig = {
       llmProvider: 'anthropic',
-      anthropicModel: 'claude-3-7-sonnet-20250219',
+      anthropicModel: 'claude-sonnet-4-20250514',
       openaiModel: 'gpt-4',
       deepseekModel: 'deepseek-coder',
       copilotModel: 'gpt-4',
