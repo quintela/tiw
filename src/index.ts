@@ -184,9 +184,11 @@ function buildConfigOptions(command: Command): Record<string, any> {
     llmProvider: mergedOptions.provider as LLMProvider,
     model: mergedOptions.model,
     gitPlatform: mergedOptions.platform as GitPlatform | undefined,
-    promptDir: mergedOptions.templates,
+    promptDir: mergedOptions.templates
+      ? path.join(mergedOptions.templates, 'prompts')
+      : undefined,
     formatterTemplate: mergedOptions.templates
-      ? path.join(mergedOptions.templates, 'formatter.txt')
+      ? path.join(mergedOptions.templates, 'formatters', 'markdown_format.md')
       : undefined,
     mrMode: mergedOptions.mrMode as MRMode,
     gitMrUrl: mergedOptions.gitMrUrl,

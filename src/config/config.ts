@@ -339,8 +339,8 @@ export class Config {
 
     if (this.options['templates'] && !this.options.formatterTemplate) {
       const templatesDir = this.options['templates'] as string;
-      updatedConfig.formatterTemplate = path.join(templatesDir, 'formatter.txt');
-      updatedConfig.promptDir = templatesDir;
+      updatedConfig.formatterTemplate = path.join(templatesDir, 'formatters', 'markdown_format.md');
+      updatedConfig.promptDir = path.join(templatesDir, 'prompts');
     }
 
     return updatedConfig;
