@@ -115,7 +115,7 @@ export class Config {
     return {
       // LLM provider configuration
       llmProvider: (this.getEnvVar('LLM_PROVIDER') as LLMProvider) || 'anthropic',
-      anthropicModel: this.getEnvVar('ANTHROPIC_MODEL') || 'claude-3-7-sonnet-20250219',
+      anthropicModel: this.getEnvVar('ANTHROPIC_MODEL') || 'claude-sonnet-4-20250514',
       openaiModel: this.getEnvVar('OPENAI_MODEL') || 'gpt-4',
       deepseekModel: this.getEnvVar('DEEPSEEK_MODEL') || 'deepseek-coder',
       copilotModel: this.getEnvVar('COPILOT_MODEL') || 'gpt-4',
@@ -339,8 +339,8 @@ export class Config {
 
     if (this.options['templates'] && !this.options.formatterTemplate) {
       const templatesDir = this.options['templates'] as string;
-      updatedConfig.formatterTemplate = path.join(templatesDir, 'formatter.txt');
-      updatedConfig.promptDir = templatesDir;
+      updatedConfig.formatterTemplate = path.join(templatesDir, 'formatters', 'markdown_format.md');
+      updatedConfig.promptDir = path.join(templatesDir, 'prompts');
     }
 
     return updatedConfig;

@@ -1,22 +1,14 @@
-## Overview
+## Code Review Analysis
 
 **{{overview.summary}}**
 
 - **Risk Level**: {{overview.riskLevel}}
 - **Recommended Action**: {{overview.recommendedAction}}
 
-## General Feedback
+## Issues and Concerns
 
-{{#if generalFeedback.strengths.length}}
-### Strengths
-
-{{#each generalFeedback.strengths}}
-- {{this}}
-{{/each}}
-
-{{/if}}
 {{#if generalFeedback.concerns.length}}
-### Concerns
+### Critical Concerns
 
 {{#each generalFeedback.concerns}}
 - {{this}}
@@ -24,35 +16,36 @@
 
 {{/if}}
 {{#if generalFeedback.suggestions.length}}
-### Suggestions
+### Improvement Recommendations
 
 {{#each generalFeedback.suggestions}}
 - {{this}}
 {{/each}}
 
 {{/if}}
-## File Reviews
+
+## File Analysis
 
 {{#if fileReviews.length}}
 {{#each fileReviews}}
-### {{file}}
+### `{{file}}`
 
 {{#if comments.length}}
 {{#each comments}}
-**Line {{line}}**
-{{type}}({{severity}}): {{comment}}
+**{{type}} ({{priority}})** | Line {{line}}
+{{comment}}
 
 {{#if suggestion}}
-```suggestion
+```
 {{suggestion}}
 ```
 
-{{else}}
-
 {{/if}}
+---
+
 {{/each}}
 {{else}}
-No specific issues found in this file.
+No specific issues identified in this file.
 
 {{/if}}
 {{/each}}
@@ -60,12 +53,13 @@ No specific issues found in this file.
 No file-specific issues found.
 
 {{/if}}
-## Test Review
 
-- **Compliance**: {{testReview.compliance}}
+## Testing Analysis
+
+**Test Coverage Compliance**: {{testReview.compliance}}
 
 {{#if testReview.missingTests.length}}
-### Missing Tests
+### Missing Test Coverage
 
 {{#each testReview.missingTests}}
 - {{this}}
@@ -76,9 +70,12 @@ No file-specific issues found.
 ### Test Quality Issues
 
 {{#each testReview.testQualityIssues}}
-**{{file}} (Line {{line}})**
-Issue: {{issue}}
-Suggestion: {{suggestion}}
+**{{file}}** (Line {{line}})
+- **Issue**: {{issue}}
+- **Fix**: {{suggestion}}
 
 {{/each}}
 {{/if}}
+
+---
+*Review focused on identifying issues and improvements only. No positive feedback provided per configuration.*

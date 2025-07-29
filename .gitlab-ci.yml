@@ -1,0 +1,78 @@
+stages:
+  - review
+
+variables:
+  # GitLab automatically provides CI_PROJECT_ID and CI_MERGE_REQUEST_IID
+  # in merge request pipelines when CI_PIPELINE_SOURCE=merge_request_event
+  LLM_PROVIDER: anthropic
+  ANTHROPIC_MODEL: claude-sonnet-4-20250514
+  VERBOSE: 'true'
+  IGNORE_LOCK_FILES: 'true'
+  MAX_PROMPT_TOKENS: 150000
+
+tiw-code-review:
+  stage: review
+  image: node:20-alpine
+
+  # Only run on merge request events
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+  # Cache node_modules for faster builds
+  cache:
+    key:
+      files:
+        - yarn.lock
+    paths:
+      - node_modules/
+      - .yarn/cache/
+
+  before_script:
+    # Install dependencies
+    - apk add --no-cache git
+    - yarn install --frozen-lockfile
+
+    # Debug environment variables
+    - echo "🔍 CI Environment Check"
+    - echo "CI_PROJECT_ID=$CI_PROJECT_ID"
+    - echo "CI_MERGE_REQUEST_IID=$CI_MERGE_REQUEST_IID"
+    - echo "CI_PIPELINE_SOURCE=$CI_PIPELINE_SOURCE"
+    - |
+      if [ -z "$ANTHROPIC_API_KEY" ]; then
+        echo "❌ ANTHROPIC_API_KEY is not set or empty"
+        exit 1
+      else
+        echo "✅ ANTHROPIC_API_KEY is set (length: ${#ANTHROPIC_API_KEY})"
+        echo "✅ First 20 chars: ${ANTHROPIC_API_KEY:0:20}..."
+      fi
+    - |
+      if [ -z "$GITLAB_TOKEN" ]; then
+        echo "❌ GITLAB_TOKEN is not set or empty"
+        echo "💡 Please add GITLAB_TOKEN as a CI/CD variable in project settings"
+        echo "💡 Create a personal access token with 'api' scope at:"
+        echo "   https://gitlab.com/-/profile/personal_access_tokens"
+        exit 1
+      else
+        echo "✅ GITLAB_TOKEN is set (length: ${#GITLAB_TOKEN})"
+        echo "✅ First 20 chars: ${GITLAB_TOKEN:0:20}..."
+      fi
+
+  script:
+    # Build the project
+    - echo "🔨 Building Tiw"
+    - yarn build
+
+    # Run the code review
+    - echo "🤖 Running Tiw Code Review"
+    - yarn start ci --platform gitlab --verbose
+
+  # Allow the job to fail without failing the entire pipeline
+  # This prevents blocking MRs if the review service has issues
+  allow_failure: true
+
+  # Only keep artifacts for failed jobs for debugging
+  artifacts:
+    when: on_failure
+    paths:
+      - reviews/
+    expire_in: 1 week

@@ -65,7 +65,7 @@ cat > ~/.config/tiw/.env << 'EOF'
 # LLM Configuration
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=your_anthropic_api_key
-ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
 
 # Git Platform Configuration
 GITLAB_URL=https://gitlab.com
@@ -95,7 +95,7 @@ DEEPSEEK_API_KEY=your_deepseek_api_key
 COPILOT_API_KEY=your_copilot_api_key
 
 # LLM Model Selection
-ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
 OPENAI_MODEL=gpt-4
 DEEPSEEK_MODEL=deepseek-coder
 COPILOT_MODEL=gpt-4
@@ -205,54 +205,98 @@ Create a `.gitlab-ci.yml` file in your repository:
 stages:
   - review
 
-mr-review:
+variables:
+  LLM_PROVIDER: anthropic
+  ANTHROPIC_MODEL: claude-sonnet-4-20250514
+  VERBOSE: 'true'
+  IGNORE_LOCK_FILES: 'true'
+  MAX_PROMPT_TOKENS: 150000
+
+tiw-code-review:
   stage: review
-  image: node:latest
+  image: node:20-alpine
+
+  # Only run on merge request events
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+  # Cache node_modules for faster builds
+  cache:
+    key:
+      files:
+        - yarn.lock
+    paths:
+      - node_modules/
+
+  before_script:
+    - apk add --no-cache git
+    - yarn install --frozen-lockfile
+    - yarn build
+
   script:
-    - npm install -g tiw
-    - tiw ci
-  only:
-    - merge_requests
-  variables:
-    LLM_PROVIDER: anthropic
-    IGNORE_LOCK_FILES: 'true'
-    VERBOSE: 'true'
+    - yarn start ci --platform gitlab --verbose
+
+  # Allow failure to prevent blocking MRs
+  allow_failure: true
 ```
 
 **Important:** Configure these secure variables in GitLab CI/CD settings:
 
-- `GITLAB_TOKEN`: Your GitLab personal access token
-- `ANTHROPIC_API_KEY` (or other LLM provider API key)
+- `GITLAB_TOKEN`: Your GitLab personal access token with `api` scope
+- `ANTHROPIC_API_KEY`: Your Anthropic API key (or other LLM provider API key)
 
 #### GitHub Actions
 
-Create a `.github/workflows/review.yml` file:
+Create a `.github/workflows/tiw-review.yml` file:
 
 ```yaml
-name: Code Review
+name: Tiw Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
   review:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
-      - run: npm install -g tiw
-      - name: Run Tiw
-        run: tiw ci --platform github
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build Tiw
+        run: yarn build
+
+      - name: Run Tiw Review
+        run: yarn start ci --platform github --verbose
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           LLM_PROVIDER: anthropic
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: claude-sonnet-4-20250514
+          VERBOSE: 'true'
+          IGNORE_LOCK_FILES: 'true'
+          MAX_PROMPT_TOKENS: 150000
 ```
+
+**Important:** Configure these secrets in GitHub repository settings:
+
+- `ANTHROPIC_API_KEY`: Your Anthropic API key (or other LLM provider API key)
+- The `GITHUB_TOKEN` is automatically provided by GitHub Actions
 
 ### Common Options
 
@@ -303,11 +347,11 @@ tiw url --help
 
 ```sh
 # Use Anthropic Claude
-tiw local --provider anthropic --model claude-3-7-sonnet-20250219
+tiw local --provider anthropic --model claude-sonnet-4-20250514
 # OR using environment variables
 export LLM_PROVIDER=anthropic
 export ANTHROPIC_API_KEY=your_api_key
-export ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
+export ANTHROPIC_MODEL=claude-sonnet-4-20250514
 tiw local
 ```
 

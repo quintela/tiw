@@ -403,6 +403,34 @@ export class MRReviewer {
         this.logger.debug(`Prompt length: ${prompt.length} characters`);
       }
 
+      // Debug mode: skip API call and return mock response
+      if (process.env['DEBUG_MODE'] === 'true' || process.env['SKIP_API'] === 'true') {
+        this.logger.info('🚧 DEBUG MODE: Skipping LLM API call');
+        this.logger.debug('Generated prompt:');
+        this.logger.debug('='.repeat(50));
+        this.logger.debug(prompt);
+        this.logger.debug('='.repeat(50));
+        
+        return JSON.stringify({
+          overview: {
+            summary: "DEBUG MODE: Mock review response",
+            riskLevel: "low",
+            recommendedAction: "comment"
+          },
+          fileReviews: [],
+          testReview: {
+            compliance: "unknown",
+            missingTests: ["Debug mode - no actual analysis performed"],
+            testQualityIssues: []
+          },
+          generalFeedback: {
+            strengths: ["Template system is working"],
+            concerns: ["This is a mock response for debugging"],
+            suggestions: ["Set DEBUG_MODE=false to use real LLM analysis"]
+          }
+        }, null, 2);
+      }
+
       return await this.llmAdapter.analyzeCode(prompt);
     } catch (error) {
       this.logger.error('Error analyzing diff with LLM:', error as Error);

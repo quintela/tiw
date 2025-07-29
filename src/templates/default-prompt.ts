@@ -52,7 +52,7 @@ Use this exact JSON structure:
         {
           "line": 42,
           "type": "issue|suggestion|praise",
-          "severity": "critical|high|medium|low",
+          "priority": "blocking|major|minor|suggestion",
           "comment": "Detailed comment about the code",
           "suggestion": "Optional code suggestion"
         }

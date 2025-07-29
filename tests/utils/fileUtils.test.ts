@@ -66,7 +66,7 @@ describe('FileUtils', () => {
       const metadata: ReviewMetadata = {
         timestamp: '2025-03-31T12:00:00.000Z',
         llmProvider: 'anthropic',
-        llmModel: 'claude-3-7-sonnet-20250219',
+        llmModel: 'claude-sonnet-4-20250514',
         mrMode: 'local',
         gitPlatform: 'github',
         commandLine: 'mr-checker',
@@ -110,7 +110,7 @@ describe('FileUtils', () => {
       const metadata: ReviewMetadata = {
         timestamp: '2025-03-31T12:00:00.000Z',
         llmProvider: 'anthropic',
-        llmModel: 'claude-3-7-sonnet-20250219',
+        llmModel: 'claude-sonnet-4-20250514',
         mrMode: 'local',
         gitPlatform: 'github',
         commandLine: 'mr-checker',
@@ -155,7 +155,7 @@ describe('FileUtils', () => {
       const metadata: ReviewMetadata = {
         timestamp: '2025-03-31T12:00:00.000Z',
         llmProvider: 'anthropic',
-        llmModel: 'claude-3-7-sonnet-20250219',
+        llmModel: 'claude-sonnet-4-20250514',
         mrMode: 'local',
         gitPlatform: 'github',
         commandLine: 'mr-checker',
